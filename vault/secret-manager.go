@@ -20,6 +20,7 @@ import (
 // SecretManagerClient interface
 type SecretManagerClient interface {
 	Read(path string) (*vaultapi.Secret, error)
+	ReadWithData(path string, data map[string][]string) (*vaultapi.Secret, error)
 	List(path string) (*vaultapi.Secret, error)
 }
 
@@ -84,6 +85,7 @@ func ConfigureVaultAccess() (*Config, error) {
 		Path:                 os.Getenv("VAULT_PATH"),
 		TokenPath:            os.Getenv("TOKEN_PATH"),
 		Backend:              os.Getenv("VAULT_BACKEND"),
+		Version:              os.Getenv("VAULT_SECRET_VERSION"),
 		UseSecretNamesAsKeys: useSecretNamesAsKeys,
 	}
 
@@ -172,11 +174,12 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 	*/
 	var keys []string
 	secretData := make(map[string]interface{})
+	var versionParam map[string][]string
 	var err error
 
 	log.Info("Using Vault Secrets")
 
-	if strings.HasSuffix(cfg.Path, "/") || strings.Contains(cfg.Path, "*") || strings.Contains(cfg.Path, "metadata") {
+	if strings.HasSuffix(cfg.Path, "/") || strings.Contains(cfg.Path, "*") {
 		keys, err = listKeys(client, *cfg)
 		if err != nil {
 			return nil, err
@@ -201,6 +204,19 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 			var value interface{}
 			secretKeyPath := fmt.Sprintf("%s%s", cfg.Path, key)
 			path := setSecretPath(cfg, secretKeyPath)
+
+			// if secret version is passed
+			if cfg.IsKVv2 && cfg.Version != "" {
+				versionParam = map[string][]string{
+					"version": {cfg.Version},
+				}
+				secret, err := client.ReadWithData(path, versionParam)
+				if err != nil {
+					return nil, err
+				}
+				return secret.Data, nil
+			}
+
 			secret, err := readSecret(client, path)
 			if err != nil {
 				return nil, err
@@ -229,6 +245,18 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 	}
 
 	path := setSecretPath(cfg, cfg.Path)
+	// if secret version is passed
+	if cfg.IsKVv2 && cfg.Version != "" {
+		versionParam = map[string][]string{
+			"version": {cfg.Version},
+		}
+		secret, err := client.ReadWithData(path, versionParam)
+		if err != nil {
+			return nil, err
+		}
+		return secret.Data, nil
+	}
+
 	secret, err := readSecret(client, path)
 
 	if err != nil {

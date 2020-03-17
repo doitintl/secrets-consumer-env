@@ -13,6 +13,7 @@ type Config struct {
 	UseSecretNamesAsKeys bool
 	IsKVv2               bool
 	MountPath            string
+	Version              string // If passed, the value at the version number will be returned
 }
 
 // Client is a Vault client with Kubernetes support
