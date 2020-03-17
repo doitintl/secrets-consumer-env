@@ -14,6 +14,21 @@ type mockVaultClient struct {
 	secret *vaultapi.Secret
 }
 
+func (m *mockVaultClient) ReadWithData(path string, data map[string][]string) (*vaultapi.Secret, error) {
+	var secretData map[string]interface{}
+
+	switch m.config.Version {
+	case "1":
+		secretData = map[string]interface{}{"API_KEY": "top-secret-1"}
+	case "2":
+		secretData = map[string]interface{}{"API_KEY": "top-secret-2"}
+	default:
+		secretData = map[string]interface{}{"API_KEY": "top-secret-latest"}
+	}
+
+	return &vaultapi.Secret{Data: secretData}, nil
+}
+
 func (m *mockVaultClient) Read(path string) (*vaultapi.Secret, error) {
 	var secretData map[string]interface{}
 
@@ -95,6 +110,18 @@ func TestVaultGetSecretData(t *testing.T) {
 			},
 			function: getSecret,
 			wants:    map[string]interface{}{"API_KEY": "plain-text-123"},
+		}, {
+			name: "get secret version 2",
+			client: &mockVaultClient{
+				config: &vaultSecretsManager.Config{
+					Path:                 "/some/secret/path",
+					UseSecretNamesAsKeys: false,
+					IsKVv2:               true,
+					Version:              "2",
+				},
+			},
+			function: getSecret,
+			wants:    map[string]interface{}{"API_KEY": "top-secret-2"},
 		}, {
 			name: "get multiple secrets from path ending with a /",
 			client: &mockVaultClient{

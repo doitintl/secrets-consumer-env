@@ -92,6 +92,9 @@ set the environment variables for the secret manager you choose:
 
 ## Hashicorp VAULT Secret Manager
 
+Vault secret path can be either treated as a directory by using a trailing slash "/"
+or it can be use as a wildcard for example: `db*, *db, *user*`
+
 ### Using Kubernetes backend
 
 | Name| Description | Required | Default|
@@ -101,6 +104,7 @@ set the environment variables for the secret manager you choose:
 | VAULT_ROLE  | vault role to access the secret | Yes | - |
 | TOKEN_PATH | kubernetes service account JWT token path | No | "/var/run/secrets/kubernetes.io/serviceaccount/token" |
 | VAULT_BACKEND | kubernetes or gcp vault backend | No | "kubernetes" |
+| VAULT_SECRET_VERSION | vault secret version  | No | latest version |
 | VAULT_USE_SECRET_NAMES_AS_KEYS | allow retrieving secrets from subpath while using the secret name as the key (single value secret only) | No | false|
 
 ### Using GCP / GCE backend
@@ -114,4 +118,5 @@ set the environment variables for the secret manager you choose:
 | GOOGLE_APPLICATION_CREDENTIALS | path to GCP service account json file with permission to the secret | No | - |
  | Service account JSON file key | Yes | - |
 | VAULT_BACKEND | kubernetes or gcp vault backend | should be explicitly set to "gcp" | Yes | - |
+| VAULT_SECRET_VERSION | vault secret version  | No | latest version |
 | VAULT_USE_SECRET_NAMES_AS_KEYS | allow retrieving secrets from subpath while using the secret name as the key (single value secret only) | No | false|
