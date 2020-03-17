@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go v0.49.1-0.20191211233137-1d9fae4b756d
 	github.com/aws/aws-sdk-go v1.28.7
 	github.com/golang/groupcache v0.0.0-20191027212112-611e8accdfc9 // indirect
-	github.com/google/go-cmp v0.3.1 // indirect
+	github.com/google/go-cmp v0.3.1
 	github.com/googleapis/gax-go/v2 v2.0.5
 	github.com/hashicorp/vault/api v1.0.4
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect

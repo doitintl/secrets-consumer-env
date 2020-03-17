@@ -201,7 +201,6 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 			var value interface{}
 			secretKeyPath := fmt.Sprintf("%s%s", cfg.Path, key)
 			path := setSecretPath(cfg, secretKeyPath)
-			log.Warnf("secretKeyPath: %v", path)
 			secret, err := readSecret(client, path)
 			if err != nil {
 				return nil, err

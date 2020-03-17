@@ -1,8 +1,9 @@
 package test
 
 import (
-	"reflect"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	vaultapi "github.com/hashicorp/vault/api"
 	vaultSecretsManager "github.com/innovia/secrets-consumer-env/vault"
@@ -17,6 +18,24 @@ func (m *mockVaultClient) Read(path string) (*vaultapi.Secret, error) {
 	var secretData map[string]interface{}
 
 	switch path {
+	case "data/some/secret/path/API_KEY":
+		if m.config.UseSecretNamesAsKeys {
+			secretData = map[string]interface{}{"value": "top-secret"}
+		} else {
+			secretData = map[string]interface{}{"KEY": "top-secret"}
+		}
+	case "data/some/secret/path/DATABASE_URL":
+		if m.config.UseSecretNamesAsKeys {
+			secretData = map[string]interface{}{"value": "some.mysql.host:3306"}
+		} else {
+			secretData = map[string]interface{}{"HOST": "some.mysql.host:3306"}
+		}
+	case "data/some/secret/path/DB_PASSWORD":
+		if m.config.UseSecretNamesAsKeys {
+			secretData = map[string]interface{}{"value": "pa33w0rd123"}
+		} else {
+			secretData = map[string]interface{}{"PASSWORD": "pa33w0rd123"}
+		}
 	case "/some/secret/path":
 		secretData = map[string]interface{}{"API_KEY": "plain-text-123"}
 	case "/some/secret/path/API_KEY":
@@ -97,14 +116,14 @@ func TestVaultGetSecretData(t *testing.T) {
 				config: &vaultSecretsManager.Config{
 					Path:                 "/some/secret/path/",
 					UseSecretNamesAsKeys: false,
-					IsKVv2:               false,
+					IsKVv2:               true,
 				},
 			},
 			function: getSecret,
 			wants: map[string]interface{}{
-				"API_KEY":      "top-secret",
-				"DATABASE_URL": "some.mysql.host:3306",
-				"DB_PASSWORD":  "pa33w0rd123",
+				"KEY":      "top-secret",
+				"HOST":     "some.mysql.host:3306",
+				"PASSWORD": "pa33w0rd123",
 			},
 		},
 	}
@@ -115,7 +134,9 @@ func TestVaultGetSecretData(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error runing test %s, %v", testCase.name, err)
 			}
-			reflect.DeepEqual(secretData, testCase.wants)
+			if !cmp.Equal(secretData, testCase.wants) {
+				t.Errorf("secretData = diff %v", cmp.Diff(secretData, testCase.wants))
+			}
 		})
 	}
 }
