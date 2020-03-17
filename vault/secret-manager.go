@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -146,6 +148,45 @@ func setSecretPath(cfg *Config, secretPath string) string {
 	return path
 }
 
+func filterByWildcard(keys []string, wildcard string) []string {
+	log.Warnf("keys: %v", keys)
+	var wildcardRegexp string
+	// db*
+	if strings.HasSuffix(wildcard, "*") {
+		wildcardRegexp = fmt.Sprintf("^%s.+", strings.TrimSuffix(wildcard, "*"))
+	}
+
+	// *db
+	if strings.HasPrefix(wildcard, "*") {
+		wildcardRegexp = fmt.Sprintf(".+%s$", strings.TrimPrefix(wildcard, "*"))
+	}
+
+	// *db*
+	if strings.HasPrefix(wildcard, "*") && strings.HasSuffix(wildcard, "*") {
+		wildcard = strings.TrimPrefix(wildcard, "*")
+		wildcard = strings.TrimSuffix(wildcard, "*")
+		wildcardRegexp = fmt.Sprintf(".+%s(.+)?", wildcard)
+	}
+
+	log.Infof("Using the wildcard pattern: %s", wildcardRegexp)
+	pattern := regexp.MustCompile(wildcardRegexp)
+
+	var filteredKeys []string
+
+	for _, key := range keys {
+		if pattern.MatchString(key) {
+			filteredKeys = append(filteredKeys, key)
+		}
+	}
+
+	if len(filteredKeys) == 0 {
+		log.Warn("keys did not match the path pattern %s, check your keys and path", wildcard)
+	} else {
+		log.Infof("Filtered keys: %v", filteredKeys)
+	}
+	return filteredKeys
+}
+
 // RetrieveSecret retrieve secrets from vault
 func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interface{}, error) {
 	/*
@@ -180,9 +221,19 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 	log.Info("Using Vault Secrets")
 
 	if strings.HasSuffix(cfg.Path, "/") || strings.Contains(cfg.Path, "*") {
+		var wildcard string
+		if strings.Contains(cfg.Path, "*") {
+			log.Warn("contains *")
+			cfg.Path, wildcard = path.Split(cfg.Path)
+			log.Warnf("path: %s, wildcard: %s", cfg.Path, wildcard)
+		}
 		keys, err = listKeys(client, *cfg)
 		if err != nil {
 			return nil, err
+		}
+
+		if wildcard != "" {
+			keys = filterByWildcard(keys, wildcard)
 		}
 
 		log.Infof("keys: %+v\n", keys)
