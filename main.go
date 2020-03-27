@@ -11,10 +11,10 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	vaultapi "github.com/hashicorp/vault/api"
-	awsSecretManager "github.com/innovia/secrets-consumer-env/aws"
-	gcpSecretManager "github.com/innovia/secrets-consumer-env/gcp"
-	injector "github.com/innovia/secrets-consumer-env/injector"
-	vaultSecretManager "github.com/innovia/secrets-consumer-env/vault"
+	awsSecretManager "github.com/doitintl/secrets-consumer-env/aws"
+	gcpSecretManager "github.com/doitintl/secrets-consumer-env/gcp"
+	injector "github.com/doitintl/secrets-consumer-env/injector"
+	vaultSecretManager "github.com/doitintl/secrets-consumer-env/vault"
 )
 
 func main() {

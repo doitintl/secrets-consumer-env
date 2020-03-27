@@ -1,4 +1,4 @@
-module github.com/innovia/secrets-consumer-env
+module github.com/doitintl/secrets-consumer-env
 
 go 1.14
 

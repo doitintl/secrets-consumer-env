@@ -6,7 +6,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	vaultapi "github.com/hashicorp/vault/api"
-	vaultSecretsManager "github.com/innovia/secrets-consumer-env/vault"
+	vaultSecretsManager "github.com/doitintl/secrets-consumer-env/vault"
 )
 
 type mockVaultClient struct {
