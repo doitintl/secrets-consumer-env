@@ -60,6 +60,7 @@ func ExtractPayload(payload secretspb.SecretPayload) (map[string]interface{}, er
 
 // NewSecretManagerClient create new secret manager client
 func NewSecretManagerClient() (*secretmanager.Client, error) {
+	log.Info("Creating new GCP Secret Manager client")
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx)
 	if err != nil {
@@ -70,12 +71,6 @@ func NewSecretManagerClient() (*secretmanager.Client, error) {
 
 // BuildAccessSecretRequest from params
 func BuildAccessSecretRequest(s *SecretManagerAccessRequestParams) (*secretspb.AccessSecretVersionRequest, error) {
-	if s.Project == "" {
-		return nil, fmt.Errorf("missing PROJECT_ID environment variable")
-	}
-	if s.Name == "" {
-		return nil, fmt.Errorf("missing SECRET_NAME environment variable")
-	}
 	if s.Version == "" {
 		s.Version = "latest"
 	}
@@ -86,16 +81,22 @@ func BuildAccessSecretRequest(s *SecretManagerAccessRequestParams) (*secretspb.A
 		"secret_version": s.Version,
 	})
 	logger.Info("Secret Manager access secret for:")
+
+	if s.Project == "" {
+		return nil, fmt.Errorf("missing PROJECT_ID environment variable")
+	}
+	if s.Name == "" {
+		return nil, fmt.Errorf("missing SECRET_NAME environment variable")
+	}
+
 	accessRequest := &secretspb.AccessSecretVersionRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/%s", s.Project, s.Name, s.Version),
 	}
 	return accessRequest, nil
-
 }
 
 // RetrieveSecret Initialize client and get secret data
 func RetrieveSecret(client SecretManagerClient) (map[string]interface{}, error) {
-	log.Info("Using GCP Secret Manager")
 	var err error
 	params := &SecretManagerAccessRequestParams{
 		Project: os.Getenv("PROJECT_ID"),

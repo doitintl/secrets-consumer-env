@@ -69,7 +69,6 @@ func buildSecretValueInput() (*secretsmanager.GetSecretValueInput, error) {
 
 // RetrieveSecret from AWS secrets manager
 func RetrieveSecret() (map[string]interface{}, error) {
-	log.Info("Using AWS Secret Manager")
 	region := os.Getenv("REGION")
 	roleArn := os.Getenv("ROLE_ARN")
 	secretValueInput, err := buildSecretValueInput()

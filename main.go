@@ -10,11 +10,11 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	vaultapi "github.com/hashicorp/vault/api"
 	awsSecretManager "github.com/doitintl/secrets-consumer-env/aws"
 	gcpSecretManager "github.com/doitintl/secrets-consumer-env/gcp"
 	injector "github.com/doitintl/secrets-consumer-env/injector"
 	vaultSecretManager "github.com/doitintl/secrets-consumer-env/vault"
+	vaultapi "github.com/hashicorp/vault/api"
 )
 
 func main() {
@@ -31,14 +31,21 @@ func main() {
 
 	switch secretManager {
 	case "aws":
+		log.Info("Using AWS Secret Manager")
 		secretData, err = awsSecretManager.RetrieveSecret()
 	case "gcp":
-		client, err := gcpSecretManager.NewSecretManagerClient()
-		if err != nil {
+		log.Info("Using GCP Secret Manager")
+		client, cerr := gcpSecretManager.NewSecretManagerClient()
+		if cerr != nil {
+			err = cerr
 			break
 		}
 		secretData, err = gcpSecretManager.RetrieveSecret(client)
+		if err != nil {
+			log.Fatalf("error retrieving secrets from GCP Secrets Manager: %v", err)
+		}
 	default:
+		log.Info("Using Vault Secret Manager")
 		var gcpCfg *vaultSecretManager.GCPBackendConfig
 		var err error
 
