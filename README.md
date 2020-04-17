@@ -28,9 +28,9 @@ This tool works with the following secrets managers:
 
 1. Set the tool to work with the preferred secret manager:
 
-  `export SecretManager=aws`
+  `export SECRET_MANAGER=aws`
 
-  `export SecretManager=gcp`
+  `export SECRET_MANAGER=gcp`
 
   vault is the default secret manager
 2. Set the environment variables per secret manager of your choice

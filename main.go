@@ -27,7 +27,7 @@ func main() {
 	var vaultCfg *vaultSecretManager.Config
 	var secretData map[string]interface{}
 	var err error
-	secretManager := os.Getenv("SecretManager")
+	secretManager := os.Getenv("SECRET_MANAGER")
 
 	switch secretManager {
 	case "aws":
