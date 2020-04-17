@@ -69,6 +69,17 @@ you must either use `export GOOGLE_APPLICATION_CREDENTIALS=<path-to-service-acco
 gcloud auth application-default login
 ```
 
+### Creating a service account for the secret manager
+
+1. Create a service account in GCP for accessing the secret manager with the role `Secret Manager Secret Accessor`
+2. Create a key and download it
+3. rename the downloaded file to `service-account.json`
+4. run the following command to create a secret with the service account credentials in it
+
+   ```bash
+    kubectl create secret generic <your-secret-name> --form-file=service-account.json
+   ```
+
 | Name| Description | Required | Default|
 | :--- |:---|:---:|:---|
 | PROJECT_ID | GCP  Project ID the Secret Manager is on | Yes | - |
