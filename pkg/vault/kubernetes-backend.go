@@ -9,15 +9,14 @@ import (
 
 // GetServiceAccountToken read Kubernetes service account token
 func GetServiceAccountToken(tokenPath string) ([]byte, error) {
-	if tokenPath == "" {
-		tokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	}
 	log.Info("Getting Kubernetes service account token from file...")
 	jwt, err := ioutil.ReadFile(tokenPath)
 	if err != nil {
-		log.Errorf(
-			"failed to read service acccount token file %v, ",
-			"if you are trying to use another location use the TOKEN_PATH environment variable", err)
+		err = fmt.Errorf(
+			`failed to read service acccount token file %v,
+			if you are trying to use another location use the TOKEN_PATH environment variable`,
+			err,
+		)
 		return nil, err
 	}
 	return jwt, nil

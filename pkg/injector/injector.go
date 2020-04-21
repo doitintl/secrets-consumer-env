@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	vaultSecretsManager "github.com/doitintl/secrets-consumer-env/vault"
+	vaultSecretsManager "github.com/doitintl/secrets-consumer-env/pkg/vault"
 	log "github.com/sirupsen/logrus"
 )
 

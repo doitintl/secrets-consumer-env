@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
+	"github.com/doitintl/secrets-consumer-env/pkg/vault"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
@@ -16,6 +16,15 @@ import (
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 )
+
+// Config - configuration for GCP
+type Config struct {
+	ProjectID                    string
+	SecretName                   string
+	SecretVersion                string
+	GoogleApplicationCredentials string
+	ServiceAccount               string
+}
 
 // SecretManagerAccessRequestParams is used as input to access a secret from Secret Manager.
 type SecretManagerAccessRequestParams struct {
@@ -71,37 +80,37 @@ func NewSecretManagerClient() (*secretmanager.Client, error) {
 
 // BuildAccessSecretRequest from params
 func BuildAccessSecretRequest(s *SecretManagerAccessRequestParams) (*secretspb.AccessSecretVersionRequest, error) {
-	if s.Version == "" {
-		s.Version = "latest"
-	}
-
-	logger := log.WithFields(logrus.Fields{
-		"project":        s.Project,
-		"secret_name":    s.Name,
-		"secret_version": s.Version,
-	})
-	logger.Info("Secret Manager access secret for:")
-
-	if s.Project == "" {
-		return nil, fmt.Errorf("missing PROJECT_ID environment variable")
-	}
-	if s.Name == "" {
-		return nil, fmt.Errorf("missing SECRET_NAME environment variable")
-	}
-
 	accessRequest := &secretspb.AccessSecretVersionRequest{
 		Name: fmt.Sprintf("projects/%s/secrets/%s/versions/%s", s.Project, s.Name, s.Version),
 	}
 	return accessRequest, nil
+
 }
 
 // RetrieveSecret Initialize client and get secret data
-func RetrieveSecret(client SecretManagerClient) (map[string]interface{}, error) {
-	var err error
+func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interface{}, error) {
+	var (
+		logger *log.Entry
+		err    error
+	)
+
+	sa, err := vault.GetServiceAccountCreds(&vault.GCPBackendConfig{Project: cfg.ProjectID, CredsPath: cfg.GoogleApplicationCredentials})
+	if err != nil {
+		return nil, err
+	}
+	cfg.ServiceAccount = sa.Email
+	logger = log.WithFields(logrus.Fields{
+		"project":         cfg.ProjectID,
+		"secret_name":     cfg.SecretName,
+		"secret_version":  cfg.SecretVersion,
+		"service_account": cfg.ServiceAccount,
+	})
+
+	logger.Info("Getting secrets from GCP Secret Manager")
 	params := &SecretManagerAccessRequestParams{
-		Project: os.Getenv("PROJECT_ID"),
-		Name:    os.Getenv("SECRET_NAME"),
-		Version: os.Getenv("SECRET_VERSION"),
+		Project: cfg.ProjectID,
+		Name:    cfg.SecretName,
+		Version: cfg.SecretVersion,
 	}
 
 	accessRequest, err := BuildAccessSecretRequest(params)

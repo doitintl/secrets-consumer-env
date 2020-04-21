@@ -74,7 +74,8 @@ func kvPreflightVersionRequest(client *api.Client, path string) (string, int, er
 	return mountPath, 1, nil
 }
 
-func addPrefixToVKVPath(p, mountPath, apiPrefix string) string {
+// AddPrefixToVKVPath add data
+func AddPrefixToVKVPath(p, mountPath, apiPrefix string) string {
 	switch {
 	case p == mountPath, p == strings.TrimSuffix(mountPath, "/"):
 		return path.Join(mountPath, apiPrefix)
@@ -85,9 +86,9 @@ func addPrefixToVKVPath(p, mountPath, apiPrefix string) string {
 }
 
 // GetKVConfig get mount path and is v2
-func GetKVConfig(client  *api.Client, cfg *Config) error {
+func GetKVConfig(client *api.Client, cfg *SecretConfig) error {
 	mountPath, v2, err := isKVv2(cfg.Path, client)
-	log.Infof("KV secret version is v2: %v", v2)
+	log.Infof("Secret path %s is a KVv2: %v", cfg.Path, v2)
 
 	if err != nil {
 		return fmt.Errorf("could not check if secret KV version is 2: %v", err)
@@ -96,4 +97,48 @@ func GetKVConfig(client  *api.Client, cfg *Config) error {
 	cfg.MountPath = mountPath
 	cfg.IsKVv2 = v2
 	return nil
+}
+
+// sanitizePath removes any leading or trailing things from a "path".
+func sanitizePath(s string) string {
+	return ensureNoLeadingSlash(strings.TrimSpace(s))
+}
+
+// ensureTrailingSlash ensures the given string has a trailing slash.
+func ensureTrailingSlash(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	for len(s) > 0 && s[len(s)-1] != '/' {
+		s = s + "/"
+	}
+	return s
+}
+
+// ensureNoTrailingSlash ensures the given string has a trailing slash.
+func ensureNoTrailingSlash(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	for len(s) > 0 && s[len(s)-1] == '/' {
+		s = s[:len(s)-1]
+	}
+	return s
+}
+
+// ensureNoLeadingSlash ensures the given string has a trailing slash.
+func ensureNoLeadingSlash(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	for len(s) > 0 && s[0] == '/' {
+		s = s[1:]
+	}
+	return s
 }

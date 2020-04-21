@@ -2,11 +2,10 @@ package test
 
 import (
 	"context"
-	"os"
 	"testing"
 
+	gcpSecretsManager "github.com/doitintl/secrets-consumer-env/pkg/gcp"
 	"github.com/googleapis/gax-go/v2"
-	gcpSecretsManager "github.com/doitintl/secrets-consumer-env/gcp"
 	"github.com/magiconair/properties/assert"
 	secretspb "google.golang.org/genproto/googleapis/cloud/secrets/v1beta1"
 )
@@ -23,9 +22,11 @@ func (m *mockGCPSecretManagerClient) AccessSecretVersion(ctx context.Context, re
 
 func TestGCPGetSecretData(t *testing.T) {
 	client := &mockGCPSecretManagerClient{}
-	os.Setenv("PROJECT_ID", "fake-project")
-	os.Setenv("SECRET_NAME", "top-secret")
-	secretData, err := gcpSecretsManager.RetrieveSecret(client)
+	cfg := &gcpSecretsManager.Config{
+		ProjectID:  "fake-project",
+		SecretName: "top-secret",
+	}
+	secretData, err := gcpSecretsManager.RetrieveSecret(client, cfg)
 	if err != nil {
 		t.Fatalf("error retrieving secret data %v", err)
 	}

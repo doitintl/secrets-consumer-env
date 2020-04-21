@@ -15,14 +15,15 @@ import (
 
 // GCPBackendConfig parmaters for GCP backend login through Vault
 type GCPBackendConfig struct {
-	project        string
-	credsPath      string
-	serviceAccount string
+	Project        string
+	CredsPath      string
+	ServiceAccount string
 }
 
-func getServiceAccountCreds(cfg *GCPBackendConfig) (*jwt.Config, error) {
+// GetServiceAccountCreds read the service account json
+func GetServiceAccountCreds(cfg *GCPBackendConfig) (*jwt.Config, error) {
 	log.Info("Getting service account credential file...")
-	jsonBytes, err := ioutil.ReadFile(cfg.credsPath)
+	jsonBytes, err := ioutil.ReadFile(cfg.CredsPath)
 	if err != nil {
 		log.Fatalf("error reading credentials file %v", err)
 	}
@@ -34,10 +35,10 @@ func getServiceAccountCreds(cfg *GCPBackendConfig) (*jwt.Config, error) {
 }
 
 func generateSignedJWTWithIAM(iamClient *iam.Service, cfg *GCPBackendConfig, role string) (*iam.SignJwtResponse, error) {
-	log.Info("Generating signed JWT with IAM...")
-	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", cfg.project, cfg.serviceAccount)
+	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", cfg.Project, cfg.ServiceAccount)
+	log.Infof("Generating signed JWT with IAM for resource %s", resourceName)
 	jwtPayload := map[string]interface{}{
-		"sub": cfg.serviceAccount,
+		"sub": cfg.ServiceAccount,
 		"aud": fmt.Sprintf("vault/%s", role),
 		"exp": time.Now().Add(time.Minute * 10).Unix(),
 	}
@@ -60,11 +61,13 @@ func generateSignedJWTWithIAM(iamClient *iam.Service, cfg *GCPBackendConfig, rol
 
 // GCPBackendLogin Authenticate to Vault via GCP Backend
 func GCPBackendLogin(client *Client, gcpBackendConfig *GCPBackendConfig, vaultConfig *Config) (string, error) {
-	config, err := getServiceAccountCreds(gcpBackendConfig)
+	var logger *log.Entry
+
+	config, err := GetServiceAccountCreds(gcpBackendConfig)
 	if err != nil {
 		return "", err
 	}
-	gcpBackendConfig.serviceAccount = config.Email
+	gcpBackendConfig.ServiceAccount = config.Email
 	httpClient := config.Client(oauth2.NoContext)
 	iamClient, err := iam.New(httpClient)
 	if err != nil {
@@ -80,12 +83,15 @@ func GCPBackendLogin(client *Client, gcpBackendConfig *GCPBackendConfig, vaultCo
 		"role": vaultConfig.Role,
 		"jwt":  resp.SignedJwt,
 	}
-	log.Infof("Login into Vault GCP backend using the role %s", vaultConfig.Role)
+	logger = log.WithFields(log.Fields{
+		"project":        gcpBackendConfig.Project,
+		"serviceAccount": gcpBackendConfig.ServiceAccount,
+	})
+	logger.Infof("Login into Vault GCP backend using the role %s", vaultConfig.Role)
 	secretData, err := client.Logical.Write("auth/gcp/login", params)
 	if err != nil {
 		return "", fmt.Errorf("failed login to Vault using GCP backend %v", err)
 	}
 	clientToken := &secretData.Auth.ClientToken
-	log.Info(clientToken)
 	return *clientToken, nil
 }

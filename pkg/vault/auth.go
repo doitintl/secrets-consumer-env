@@ -4,18 +4,6 @@ import (
 	vaultapi "github.com/hashicorp/vault/api"
 )
 
-// Config configuration for Vault
-type Config struct {
-	Role                 string
-	Path                 string // If Path ends with a / or contains * it will treat it as a wildcard path
-	TokenPath            string
-	Backend              string
-	UseSecretNamesAsKeys bool
-	IsKVv2               bool
-	MountPath            string
-	Version              string // If passed, the value at the version number will be returned
-}
-
 // Client is a Vault client with Kubernetes support
 type Client struct {
 	Client  *vaultapi.Client

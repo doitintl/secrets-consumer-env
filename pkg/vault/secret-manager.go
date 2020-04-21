@@ -1,29 +1,39 @@
-// This script expect basic vault env vars to exist before execution
-// a new set of env vars (sanitizedEnviron) is then made to hole only the env appears in the secret
-
 package vault
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
-	"os"
 	"path"
-	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
-	vaultapi "github.com/hashicorp/vault/api"
-	"github.com/sirupsen/logrus"
+	"github.com/hashicorp/vault/api"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cast"
 )
 
-// SecretManagerClient interface
-type SecretManagerClient interface {
-	Read(path string) (*vaultapi.Secret, error)
-	ReadWithData(path string, data map[string][]string) (*vaultapi.Secret, error)
-	List(path string) (*vaultapi.Secret, error)
+// SecretConfig holds secret config
+type SecretConfig struct {
+	Path                 string // If Path ends with a / or contains * it will treat it as a wildcard path
+	IsKVv2               bool
+	MountPath            string
+	Version              string // If passed, the value at the version number will be returned
+	UseSecretNamesAsKeys bool
+}
+
+// Config configuration for Vault
+type Config struct {
+	Role              string
+	TokenPath         string
+	Backend           string
+	SecretsConfigList []SecretConfig
+}
+
+// SecretConfigJSON JSON struct for secret config
+type SecretConfigJSON struct {
+	Path                 string `json:"path"`
+	Version              string `json:"version"`
+	UseSecretNamesAsKeys bool   `json:"use-secret-names-as-keys"`
 }
 
 // CastSecretDataToStringMap convert the secret data to map[string]interface{}
@@ -41,72 +51,49 @@ func CastSecretDataToStringMap(secretData map[string]interface{}) map[string]int
 	return data
 }
 
-// ConfigureGCPAccess configure GCP parameters for vault
-func ConfigureGCPAccess() (*GCPBackendConfig, error) {
-	var gcpCfg *GCPBackendConfig
-	var logger *log.Entry
-	var err error
+// ConfigureVaultSecrets configure Vault Role TokenPath Backend and SecretsConfigList
+func ConfigureVaultSecrets(client *api.Client, secretConfigs []string, vaultCfg *Config) (*Config, error) {
+	/*
+		SecretsConfigs is a slice with a number of struct of secret configuration(Path, isKVv2, mountPath, Version, useSecretKeysAsNames)
+		secret config can be consumed in 2 ways
 
-	gcpCfg = &GCPBackendConfig{
-		project:        os.Getenv("PROJECT_ID"),
-		credsPath:      os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-		serviceAccount: "",
-	}
-	if gcpCfg.project == "" {
-		return nil, fmt.Errorf("PROJECT_ID environment variable is missing")
-	}
+		// --secret-path flags for string path
+		// --secret-config flags for json config (version, path, use-secret-names-as-keys)
 
-	if gcpCfg.credsPath == "" {
-		return nil, errors.New(
-			"CREDS_PATH environment variable is missing, please specify the file path to the GCP service account JSON file",
-		)
-	}
+		either via one annotation or env vars VAULT_PATH, SECRET_VERSION, VAULT_USE_SECRET_NAMES_AS_KEYS
+		or via json string '{"path": "/a/b/c", "version": "3", "use-secret-names-as-keys":  true}',
+	*/
 
-	gcpCfg.credsPath, err = filepath.Abs(gcpCfg.credsPath)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"unable to find the full path for CREDS_PATH %s, %w",
-			gcpCfg.credsPath,
-			err,
-		)
-	}
+	var secretsConfigList []SecretConfig
 
-	logger = log.WithFields(logrus.Fields{
-		"project":        gcpCfg.project,
-		"serviceAccount": gcpCfg.serviceAccount,
-	})
-	logger.Info("Vault access secret data using GCP Backend")
-	return gcpCfg, nil
-}
+	for _, secretConfigJSONString := range secretConfigs {
+		secretConfig := SecretConfig{}
+		var secretConfigData SecretConfigJSON
+		err := json.Unmarshal([]byte(secretConfigJSONString), &secretConfigData)
+		if err != nil {
+			return nil, fmt.Errorf("unable to decode JSON from string %s - %+v", secretConfigJSONString, err)
+		}
 
-// ConfigureVaultAccess configure Vault parameters
-func ConfigureVaultAccess() (*Config, error) {
-	useSecretNamesAsKeys, _ := strconv.ParseBool(os.Getenv("VAULT_USE_SECRET_NAMES_AS_KEYS"))
-	vaultCfg := &Config{
-		Role:                 os.Getenv("VAULT_ROLE"),
-		Path:                 os.Getenv("VAULT_PATH"),
-		TokenPath:            os.Getenv("TOKEN_PATH"),
-		Backend:              os.Getenv("VAULT_BACKEND"),
-		Version:              os.Getenv("VAULT_SECRET_VERSION"),
-		UseSecretNamesAsKeys: useSecretNamesAsKeys,
+		secretConfig.Path = secretConfigData.Path
+		secretConfig.Version = secretConfigData.Version
+		secretConfig.UseSecretNamesAsKeys = secretConfigData.UseSecretNamesAsKeys
+		GetKVConfig(client, &secretConfig)
+		secretsConfigList = append(secretsConfigList, secretConfig)
 	}
 
-	if vaultCfg.Role == "" {
-		return nil, fmt.Errorf("VAULT_ROLE environment variables is missing")
-	}
-
-	if vaultCfg.Path == "" {
-		return nil, fmt.Errorf("VAULT_PATH environment variables is missing")
-	}
-
+	vaultCfg.SecretsConfigList = secretsConfigList
 	return vaultCfg, nil
 }
 
-func readSecret(client SecretManagerClient, secretPath string) (*vaultapi.Secret, error) {
+func readSecret(client *api.Client, secretPath string) (*api.Secret, error) {
 	log.Infof("Getting Vault secrets from path: %s", secretPath)
-	secret, secretError := client.Read(secretPath)
+	secret, secretError := client.Logical().Read(secretPath)
 	if secretError != nil {
 		return nil, fmt.Errorf("failed to read secret '%s' %v", secretPath, secretError)
+	}
+
+	if secret == nil {
+		return nil, fmt.Errorf("Could not find a secret")
 	}
 	if secret.Data == nil {
 		return nil, fmt.Errorf("Vault secret path not found %s", secretPath)
@@ -114,34 +101,38 @@ func readSecret(client SecretManagerClient, secretPath string) (*vaultapi.Secret
 	return secret, nil
 }
 
-func listKeys(client SecretManagerClient, cfg Config) ([]string, error) {
+func listKeys(client *api.Client, cfg SecretConfig) ([]string, error) {
 	path := cfg.Path
 	var err error
 	log.Infof("secret path ends with a \"/\" or has \"*\", listing keys from path: %s", path)
 
 	if cfg.IsKVv2 {
-		path = addPrefixToVKVPath(path, cfg.MountPath, "metadata")
-		if err != nil {
-			return nil, fmt.Errorf("could not add prefix metadata to secret path: %v", err)
-		}
+		path = sanitizePath(path)
+		path = AddPrefixToVKVPath(path, cfg.MountPath, "metadata")
 	}
 
-	data, err := client.List(path)
+	data, err := client.Logical().List(path)
+
 	if err != nil {
-		return nil, fmt.Errorf("could not list keys: %v", err)
+		return nil, fmt.Errorf("Error listing %s: %s", path, err)
 	}
 
 	if data == nil {
-		return nil, fmt.Errorf("no value found at: %s, check the path", path)
+		return nil, fmt.Errorf("no keys found for list operation at: %s, check the path", path)
+	}
+
+	for _, w := range data.Warnings {
+		log.Warnf("%+v", w)
 	}
 	keys := cast.ToStringSlice(data.Data["keys"])
 	return keys, nil
 }
 
-func setSecretPath(cfg *Config, secretPath string) string {
+func setSecretPath(cfg *SecretConfig, secretPath string) string {
+	secretPath = sanitizePath(secretPath)
 	var path string
 	if cfg.IsKVv2 {
-		path = addPrefixToVKVPath(secretPath, cfg.MountPath, "data")
+		path = AddPrefixToVKVPath(secretPath, cfg.MountPath, "data")
 	} else {
 		path = secretPath
 	}
@@ -149,7 +140,7 @@ func setSecretPath(cfg *Config, secretPath string) string {
 }
 
 func filterByWildcard(keys []string, wildcard string) []string {
-	log.Warnf("keys: %v", keys)
+	log.Debugf("keys: %v", keys)
 	var wildcardRegexp string
 	// db*
 	if strings.HasSuffix(wildcard, "*") {
@@ -180,7 +171,7 @@ func filterByWildcard(keys []string, wildcard string) []string {
 	}
 
 	if len(filteredKeys) == 0 {
-		log.Warn("keys did not match the path pattern %s, check your keys and path", wildcard)
+		log.Warnf("keys did not match the path pattern %s, check your keys and path", wildcard)
 	} else {
 		log.Infof("Filtered keys: %v", filteredKeys)
 	}
@@ -188,7 +179,7 @@ func filterByWildcard(keys []string, wildcard string) []string {
 }
 
 // RetrieveSecret retrieve secrets from vault
-func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interface{}, error) {
+func RetrieveSecret(client *api.Client, cfg *SecretConfig) (map[string]interface{}, error) {
 	/*
 		list of secrets names (keys) /secret/kv2/service/
 		USE_SECRET_NAME_AS_KEY
@@ -213,14 +204,19 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 
 		in this case we need the secret keys and values
 	*/
-	var keys []string
+	var (
+		keys         []string
+		versionParam map[string][]string
+		err          error
+	)
 	secretData := make(map[string]interface{})
-	var versionParam map[string][]string
-	var err error
 
-	log.Info("Using Vault Secrets")
+	if strings.HasSuffix(cfg.Path, "/") || strings.Contains(cfg.Path, "*") || cfg.UseSecretNamesAsKeys {
+		if cfg.UseSecretNamesAsKeys {
+			cfg.Path = ensureTrailingSlash(cfg.Path)
+			log.Warnf("cfg: %+v", cfg)
+		}
 
-	if strings.HasSuffix(cfg.Path, "/") || strings.Contains(cfg.Path, "*") {
 		var wildcard string
 		if strings.Contains(cfg.Path, "*") {
 			log.Warn("contains *")
@@ -261,7 +257,7 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 				versionParam = map[string][]string{
 					"version": {cfg.Version},
 				}
-				secret, err := client.ReadWithData(path, versionParam)
+				secret, err := client.Logical().ReadWithData(path, versionParam)
 				if err != nil {
 					return nil, err
 				}
@@ -301,7 +297,7 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 		versionParam = map[string][]string{
 			"version": {cfg.Version},
 		}
-		secret, err := client.ReadWithData(path, versionParam)
+		secret, err := client.Logical().ReadWithData(path, versionParam)
 		if err != nil {
 			return nil, err
 		}
@@ -315,4 +311,25 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 	}
 
 	return secret.Data, nil
+}
+
+// RetrieveSecrets iterate over secretConfigsList and retrieve each secret
+func RetrieveSecrets(client *api.Client, vaultCfg *Config) (map[string]interface{}, error) {
+	secretData := make(map[string]interface{})
+	var err error
+
+	for _, secretConfig := range vaultCfg.SecretsConfigList {
+		secretConfigData := make(map[string]interface{})
+		secretConfigData, err = RetrieveSecret(client, &secretConfig)
+		if err != nil {
+			return nil, fmt.Errorf("Error getting secrets from vault: %v", err)
+		}
+
+		data := CastSecretDataToStringMap(secretConfigData)
+		for k, v := range data {
+			secretData[strings.ToLower(k)] = v
+		}
+	}
+
+	return secretData, nil
 }
