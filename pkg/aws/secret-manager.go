@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"os"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -15,10 +13,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// Config configuration for AWS
+type Config struct {
+	Region          string
+	SecretName      *string
+	PreviousVersion string
+	RoleARN         string
+}
+
 func newSecretManagerClient(region, roleArn string) *secretsmanager.SecretsManager {
-	if region == "" {
-		region = "us-east-1"
-	}
 	log.Infof("Using region: %s", region)
 	sess := session.Must(session.NewSession(&aws.Config{
 		Region: aws.String(region), // Sessions Manager functions require region configuration
@@ -51,13 +54,13 @@ func GetSecretData(api secretsmanageriface.SecretsManagerAPI, secretValueInput *
 	return secretData, nil
 }
 
-func buildSecretValueInput() (*secretsmanager.GetSecretValueInput, error) {
-	secretName := aws.String(os.Getenv("SECRET_NAME"))
+func buildSecretValueInput(cfg *Config) (*secretsmanager.GetSecretValueInput, error) {
+	secretName := cfg.SecretName
 	if aws.StringValue(secretName) == "" {
 		return nil, fmt.Errorf("error: missing SECRET_NAME environment variable")
 	}
 	versionStage := aws.String("AWSCURRENT")
-	if os.Getenv("PREVIOUS_VERSION") != "" {
+	if cfg.PreviousVersion != "" {
 		versionStage = aws.String("AWSPREVIOUS")
 	}
 	secretValueInput := &secretsmanager.GetSecretValueInput{
@@ -68,15 +71,14 @@ func buildSecretValueInput() (*secretsmanager.GetSecretValueInput, error) {
 }
 
 // RetrieveSecret from AWS secrets manager
-func RetrieveSecret() (map[string]interface{}, error) {
-	region := os.Getenv("REGION")
-	roleArn := os.Getenv("ROLE_ARN")
-	secretValueInput, err := buildSecretValueInput()
+func RetrieveSecret(cfg *Config) (map[string]interface{}, error) {
+	log.Info("Using AWS Secret Manager")
+	secretValueInput, err := buildSecretValueInput(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	client := newSecretManagerClient(region, roleArn)
+	client := newSecretManagerClient(cfg.Region, cfg.RoleARN)
 	secretData, err := GetSecretData(client, secretValueInput)
 	if err != nil {
 		return nil, err

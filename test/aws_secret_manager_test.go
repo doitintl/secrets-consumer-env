@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/secretsmanager"
 	"github.com/aws/aws-sdk-go/service/secretsmanager/secretsmanageriface"
-	awsSecretsManager "github.com/doitintl/secrets-consumer-env/aws"
+	awsSecretsManager "github.com/doitintl/secrets-consumer-env/pkg/aws"
 )
 
 type mockAWSSecretManagerClient struct {

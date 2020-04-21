@@ -1,111 +1,24 @@
-// This script expect basic vault env vars to exist before execution
-// a new set of env vars (SanitizedEnviron) is then made to hole only the env appears in the secret
+/*
+Copyright © 2020 NAME HERE <EMAIL ADDRESS>
 
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 package main
 
 import (
-	"os"
-	"os/exec"
-	"syscall"
-
-	log "github.com/sirupsen/logrus"
-
-	awsSecretManager "github.com/doitintl/secrets-consumer-env/aws"
-	gcpSecretManager "github.com/doitintl/secrets-consumer-env/gcp"
-	injector "github.com/doitintl/secrets-consumer-env/injector"
-	vaultSecretManager "github.com/doitintl/secrets-consumer-env/vault"
-	vaultapi "github.com/hashicorp/vault/api"
+	"github.com/doitintl/secrets-consumer-env/cmd"
 )
 
 func main() {
-	log.SetOutput(os.Stdout)
-	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp:          true,
-		DisableLevelTruncation: true,
-	})
-
-	var vaultCfg *vaultSecretManager.Config
-	var secretData map[string]interface{}
-	var err error
-	secretManager := os.Getenv("SECRET_MANAGER")
-
-	switch secretManager {
-	case "aws":
-		log.Info("Using AWS Secret Manager")
-		secretData, err = awsSecretManager.RetrieveSecret()
-	case "gcp":
-		log.Info("Using GCP Secret Manager")
-		client, cerr := gcpSecretManager.NewSecretManagerClient()
-		if cerr != nil {
-			err = cerr
-			break
-		}
-		secretData, err = gcpSecretManager.RetrieveSecret(client)
-		if err != nil {
-			log.Fatalf("error retrieving secrets from GCP Secrets Manager: %v", err)
-		}
-	default:
-		log.Info("Using Vault Secret Manager")
-		var gcpCfg *vaultSecretManager.GCPBackendConfig
-		var err error
-
-		vaultCfg, err = vaultSecretManager.ConfigureVaultAccess()
-		if err != nil {
-			log.Fatalf("Error configuring vault paramters: %v", err)
-		}
-
-		if vaultCfg.Backend == "gcp" {
-			gcpCfg, err = vaultSecretManager.ConfigureGCPAccess()
-		}
-
-		client, err := vaultSecretManager.NewClientWithConfig(vaultapi.DefaultConfig(), vaultCfg, gcpCfg)
-
-		if err != nil {
-			log.Fatalf("Error creating vault client: %v", err)
-		}
-
-		vaultSecretManager.GetKVConfig(client.Client, vaultCfg)
-		secretData, err = vaultSecretManager.RetrieveSecret(client.Logical, vaultCfg)
-		if err != nil {
-			log.Fatalf("Error getting secrets from vault: %v", err)
-		}
-	}
-
-	if err != nil {
-		log.Fatalf("Error retrieving secret: %v", err)
-	}
-
-	log.Info("Processing secrets from Secret Manager as environment variables")
-	// get all env vars, this include the convention on secret:ENV_VAR to include it in the env vars
-	environ := syscall.Environ()
-	sanitized := make(injector.SanitizedEnviron, 0, len(environ))
-	sanitized, err = injector.InjectSecrets(secretData, environ, sanitized)
-	if err != nil {
-		log.Fatalf("error injecting secrets: ")
-	}
-	log.Info("Launching command")
-	var entrypointCmd []string
-	if len(os.Args) == 1 {
-		log.Fatalln(
-			"no command is given, secrets-consumer-env can't determine the entrypoint (command),",
-			" please specify it explicitly or let the kubernetes webhook query it (see documentation)",
-		)
-	} else {
-		entrypointCmd = os.Args[1:]
-	}
-
-	// LookPath searches for an executable named file in the directories named by the PATH
-	// environment variable. If file contains a slash, it is tried directly and the
-	// PATH is not consulted.
-	//  The result may be an absolute path or a path relative to the current directory.
-	binary, err := exec.LookPath(os.Args[1])
-	if err != nil {
-		log.Fatalln("binary not found", entrypointCmd[0])
-	}
-
-	log.Infof("Running command using execv: %s %s", binary, entrypointCmd)
-	err = syscall.Exec(binary, entrypointCmd, sanitized)
-	if err != nil {
-		log.Fatalln("failed to exec process", binary, entrypointCmd, err.Error())
-	}
+	cmd.Execute()
 }

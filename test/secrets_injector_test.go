@@ -3,8 +3,8 @@ package test
 import (
 	"testing"
 
+	"github.com/doitintl/secrets-consumer-env/pkg/injector"
 	"github.com/google/go-cmp/cmp"
-	"github.com/doitintl/secrets-consumer-env/injector"
 )
 
 func injectSecrets(t *testing.T, secretData map[string]interface{}, environ []string, sanitized injector.SanitizedEnviron) ([]string, error) {

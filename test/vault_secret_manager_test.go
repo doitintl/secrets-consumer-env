@@ -3,167 +3,295 @@ package test
 import (
 	"testing"
 
+	vaultSecretsManager "github.com/doitintl/secrets-consumer-env/pkg/vault"
 	"github.com/google/go-cmp/cmp"
 
-	vaultapi "github.com/hashicorp/vault/api"
-	vaultSecretsManager "github.com/doitintl/secrets-consumer-env/vault"
+	kv "github.com/hashicorp/vault-plugin-secrets-kv"
+	"github.com/hashicorp/vault/api"
+	vaulthttp "github.com/hashicorp/vault/http"
+	"github.com/hashicorp/vault/sdk/logical"
+	hashivault "github.com/hashicorp/vault/vault"
+
+	"github.com/prometheus/common/log"
 )
 
-type mockVaultClient struct {
-	config *vaultSecretsManager.Config
-	secret *vaultapi.Secret
+type vaultConfigSecret struct {
+	path string
+	data map[string]interface{}
 }
 
-func (m *mockVaultClient) ReadWithData(path string, data map[string][]string) (*vaultapi.Secret, error) {
-	var secretData map[string]interface{}
-
-	switch m.config.Version {
-	case "1":
-		secretData = map[string]interface{}{"API_KEY": "top-secret-1"}
-	case "2":
-		secretData = map[string]interface{}{"API_KEY": "top-secret-2"}
-	default:
-		secretData = map[string]interface{}{"API_KEY": "top-secret-latest"}
-	}
-
-	return &vaultapi.Secret{Data: secretData}, nil
-}
-
-func (m *mockVaultClient) Read(path string) (*vaultapi.Secret, error) {
-	var secretData map[string]interface{}
-
-	switch path {
-	case "data/some/secret/path/API_KEY":
-		if m.config.UseSecretNamesAsKeys {
-			secretData = map[string]interface{}{"value": "top-secret"}
-		} else {
-			secretData = map[string]interface{}{"KEY": "top-secret"}
-		}
-	case "data/some/secret/path/DATABASE_URL":
-		if m.config.UseSecretNamesAsKeys {
-			secretData = map[string]interface{}{"value": "some.mysql.host:3306"}
-		} else {
-			secretData = map[string]interface{}{"HOST": "some.mysql.host:3306"}
-		}
-	case "data/some/secret/path/DB_PASSWORD":
-		if m.config.UseSecretNamesAsKeys {
-			secretData = map[string]interface{}{"value": "pa33w0rd123"}
-		} else {
-			secretData = map[string]interface{}{"PASSWORD": "pa33w0rd123"}
-		}
-	case "/some/secret/path":
-		secretData = map[string]interface{}{"API_KEY": "plain-text-123"}
-	case "/some/secret/path/API_KEY":
-		if m.config.UseSecretNamesAsKeys {
-			secretData = map[string]interface{}{"value": "top-secret"}
-		} else {
-			secretData = map[string]interface{}{"KEY": "top-secret"}
-		}
-	case "/some/secret/path/DATABASE_URL":
-		if m.config.UseSecretNamesAsKeys {
-			secretData = map[string]interface{}{"value": "some.mysql.host:3306"}
-		} else {
-			secretData = map[string]interface{}{"HOST": "some.mysql.host:3306"}
-		}
-	case "/some/secret/path/DB_PASSWORD":
-		if m.config.UseSecretNamesAsKeys {
-			secretData = map[string]interface{}{"value": "pa33w0rd123"}
-		} else {
-			secretData = map[string]interface{}{"PASSWORD": "pa33w0rd123"}
-		}
-	}
-
-	return &vaultapi.Secret{Data: secretData}, nil
-}
-
-func (m *mockVaultClient) List(path string) (*vaultapi.Secret, error) {
-	return &vaultapi.Secret{
-		Data: map[string]interface{}{
-			"keys": []string{"API_KEY", "DATABASE_URL", "DB_PASSWORD", "secret_v2/"},
-		},
-	}, nil
-}
-
-func getSecret(t *testing.T, client *mockVaultClient, cfg *vaultSecretsManager.Config) (map[string]interface{}, error) {
-	secretData, err := vaultSecretsManager.RetrieveSecret(client, cfg)
+func retrieveSecrets(t *testing.T, client *api.Client, secretsConfigList []string) (map[string]interface{}, error) {
+	vaultCfg, err := vaultSecretsManager.ConfigureVaultSecrets(client, secretsConfigList, &vaultSecretsManager.Config{})
 	if err != nil {
-		t.Fatalf("error retrieving secret data %v", err)
+		t.Fatalf("error configuring vault secrets %v", err)
+	}
+
+	secretData, err := vaultSecretsManager.RetrieveSecrets(client, vaultCfg)
+	if err != nil {
+		t.Fatal(err)
 	}
 	return secretData, nil
 }
 
-func TestVaultGetSecretData(t *testing.T) {
+func TestVaultSecrets(t *testing.T) {
+	client, cluster := createVaultTestCluster(t)
+	defer cluster.Cleanup()
 	testCases := []struct {
-		name     string
-		client   *mockVaultClient
-		function func(*testing.T, *mockVaultClient, *vaultSecretsManager.Config) (map[string]interface{}, error)
-		wants    map[string]interface{}
+		name              string
+		secretsConfigList []string
+		function          func(*testing.T, *api.Client, []string) (map[string]interface{}, error)
+		wants             map[string]interface{}
 	}{
 		{
-			name: "get plain secret path read v1",
-			client: &mockVaultClient{
-				config: &vaultSecretsManager.Config{
-					Path:                 "/some/secret/path",
-					UseSecretNamesAsKeys: false,
-					IsKVv2:               false,
-				},
+			name: "Plain V1 Secret",
+			secretsConfigList: []string{
+				`{"path": "secrets/v1/some/secrets/path"}`,
 			},
-			function: getSecret,
-			wants:    map[string]interface{}{"API_KEY": "plain-text-123"},
-		}, {
-			name: "get secret version 2",
-			client: &mockVaultClient{
-				config: &vaultSecretsManager.Config{
-					Path:                 "/some/secret/path",
-					UseSecretNamesAsKeys: false,
-					IsKVv2:               true,
-					Version:              "2",
-				},
-			},
-			function: getSecret,
-			wants:    map[string]interface{}{"API_KEY": "top-secret-2"},
-		}, {
-			name: "get multiple secrets from path ending with a /",
-			client: &mockVaultClient{
-				config: &vaultSecretsManager.Config{
-					Path:                 "/some/secret/path/",
-					UseSecretNamesAsKeys: false,
-					IsKVv2:               false,
-				},
-			},
-			function: getSecret,
+			function: retrieveSecrets,
 			wants: map[string]interface{}{
-				"KEY":      "top-secret",
-				"HOST":     "some.mysql.host:3306",
-				"PASSWORD": "pa33w0rd123",
+				"api_key":      "app_key",
+				"database_url": "127.0.0.1:3306",
+				"password":     "secret",
+			},
+		},
+		{
+			name: "secret names as keys v1",
+			secretsConfigList: []string{
+				`{"path": "secrets/v1/multi/secrets/path/", "use-secret-names-as-keys":  true}`,
+			},
+			function: retrieveSecrets,
+			wants: map[string]interface{}{
+				"api_key":      "top-secret",
+				"database_url": "some.mysql.host:3306",
+				"password":     "pa33w0rd123",
+				"testers":      "choice",
+			},
+		},
+		{
+			name: "Plain V2 Secret",
+			secretsConfigList: []string{
+				`{"path": "secrets/v2/plain/secrets/path/app"}`,
+			},
+			function: retrieveSecrets,
+			wants: map[string]interface{}{
+				"api_key":      "app_key_v2",
+				"database_url": "v2-host:3306",
+				"password":     "secrets-v2",
+			},
+		},
+		{
+			name: "secret names as keys v2",
+			secretsConfigList: []string{
+				`{"path": "secrets/v2/multi/secrets/path/", "use-secret-names-as-keys":  true}`,
+			},
+			function: retrieveSecrets,
+			wants: map[string]interface{}{
+				"api_key":      "v2-top-secret",
+				"database_url": "v2.mysql.host:3306",
+				"password":     "v2-pa33w0rd123",
+			},
+		},
+		{
+			name: "multiple secrets",
+			secretsConfigList: []string{
+				`{"path": "secrets/v2/multi/secrets/path/", "use-secret-names-as-keys":  true}`,
+				`{"path": "secrets/v1/multi2/secrets/path/", "use-secret-names-as-keys":  true}`,
+			},
+			function: retrieveSecrets,
+			wants: map[string]interface{}{
+				"database_url": "v2.mysql.host:3306",
+				"password":     "v2-pa33w0rd123",
+				"api_key":      "multi2-secret",
+				"db":           "multi2.mysql.host:3306",
+				"vault-pass":   "multi2-pa33w0rd123",
 			},
 		}, {
-			name: "get keys from path ending with a / with their secret value",
-			client: &mockVaultClient{
-				config: &vaultSecretsManager.Config{
-					Path:                 "/some/secret/path/",
-					UseSecretNamesAsKeys: false,
-					IsKVv2:               true,
-				},
+			name: "multiple secrets v2",
+			secretsConfigList: []string{
+				`{"path": "secrets/v2/multi2/secrets/path/", "use-secret-names-as-keys":  true}`,
+				`{"path": "secrets/v2/plain/secrets/path/app"}`,
 			},
-			function: getSecret,
+			function: retrieveSecrets,
 			wants: map[string]interface{}{
-				"KEY":      "top-secret",
-				"HOST":     "some.mysql.host:3306",
-				"PASSWORD": "pa33w0rd123",
+				"vault-pass":   "multi2-pa33w0rd123",
+				"api_key":      "app_key_v2",
+				"database_url": "v2-host:3306",
+				"password":     "secrets-v2",
 			},
 		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			secretData, err := testCase.function(t, testCase.client, testCase.client.config)
+			secretData, err := testCase.function(t, client, testCase.secretsConfigList)
 			if err != nil {
 				t.Fatalf("error runing test %s, %v", testCase.name, err)
 			}
 			if !cmp.Equal(secretData, testCase.wants) {
+				t.Logf("wants: %v", testCase.wants)
+				t.Logf("got: %v", secretData)
 				t.Errorf("secretData = diff %v", cmp.Diff(secretData, testCase.wants))
 			}
 		})
 	}
+}
+
+// Setup required secrets, policies, etc.
+func seedVaultData(t *testing.T, client *api.Client) error {
+	var err error
+	secretsV1 := []vaultConfigSecret{
+		{
+			path: "secrets/v1/some/secrets/path",
+			data: map[string]interface{}{
+				"api_key":      "app_key",
+				"database_url": "127.0.0.1:3306",
+				"password":     "secret",
+			},
+		}, {
+			path: "secrets/v1/multi/secrets/path/api_key",
+			data: map[string]interface{}{"value": "top-secret"},
+		}, {
+			path: "secrets/v1/multi/secrets/path/database_url",
+			data: map[string]interface{}{"value": "some.mysql.host:3306"},
+		}, {
+			path: "secrets/v1/multi/secrets/path/password",
+			data: map[string]interface{}{"value": "pa33w0rd123"},
+		}, {
+			path: "secrets/v1/multi/secrets/path/testers",
+			data: map[string]interface{}{"value": "choice"},
+		}, {
+			path: "secrets/v1/multi2/secrets/path/api_key",
+			data: map[string]interface{}{"value": "multi2-secret"},
+		}, {
+			path: "secrets/v1/multi2/secrets/path/db",
+			data: map[string]interface{}{"value": "multi2.mysql.host:3306"},
+		}, {
+			path: "secrets/v1/multi2/secrets/path/vault-pass",
+			data: map[string]interface{}{"value": "multi2-pa33w0rd123"},
+		},
+	}
+
+	secretsV2 := []vaultConfigSecret{
+		{
+			path: "secrets/v2/data/plain/secrets/path/app",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"api_key":      "app_key_v2",
+					"database_url": "v2-host:3306",
+					"password":     "secrets-v2",
+				},
+			},
+		}, {
+			path: "secrets/v2/data/multi/secrets/path/api_key",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"value": "v2-top-secret",
+				},
+			},
+		}, {
+			path: "secrets/v2/data/multi/secrets/path/database_url",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"value": "v2.mysql.host:3306",
+				},
+			},
+		}, {
+			path: "secrets/v2/data/multi/secrets/path/password",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"value": "v2-pa33w0rd123",
+				},
+			},
+		}, {
+			path: "secrets/v2/data/multi2/secrets/path/api_key",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{"value": "multi2-secret"},
+			},
+		}, {
+			path: "secrets/v2/data/multi2/secrets/path/database_url",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{"value": "multi2.mysql.host:3306"},
+			},
+		}, {
+			path: "secrets/v2/data/multi2/secrets/path/vault-pass",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{"value": "multi2-pa33w0rd123"},
+			},
+		},
+	}
+
+	log.Info("Seeding secrets into Vault")
+	for _, secret := range secretsV1 {
+		_, err := client.Logical().Write(secret.path, secret.data)
+		if err != nil {
+			log.Errorf("error seeding secret v1: %v", err)
+		}
+	}
+	for _, secret := range secretsV2 {
+		log.Infof("Adding secret %s", secret.path)
+		_, err := client.Logical().Write(secret.path, secret.data)
+		if err != nil {
+			log.Errorf("error seeding secret v2: %v", err)
+		}
+	}
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func createVaultTestCluster(t *testing.T) (*api.Client, *hashivault.TestCluster) {
+	t.Helper()
+	t.Log("Creating Vault Test Cluster in-memory backend")
+
+	coreConfig := &hashivault.CoreConfig{
+		LogicalBackends: map[string]logical.Factory{
+			"kv": kv.Factory,
+		},
+	}
+
+	cluster := hashivault.NewTestCluster(t, coreConfig, &hashivault.TestClusterOptions{
+		HandlerFunc: vaulthttp.Handler,
+	})
+	cluster.Start()
+	core := cluster.Cores[0]
+	hashivault.TestWaitActive(t, core.Core)
+	client := core.Client
+
+	// Create KV v1 and v2
+	mountInputV1 := &api.MountInput{
+		Type: "kv",
+		Options: map[string]string{
+			"path": "/secrets/v1",
+		},
+	}
+
+	mountInputV2 := &api.MountInput{
+		Type: "kv",
+		Options: map[string]string{
+			"path":    "/secrets/v2",
+			"version": "2",
+		},
+	}
+	mountPath1 := "/secrets/v1"
+	mountPath2 := "/secrets/v2"
+
+	log.Info("Creating secrets/v1 kv engine")
+	if err := client.Sys().Mount(mountPath1, mountInputV1); err != nil {
+		t.Fatal("error creating secrets/v1 mount")
+	}
+
+	log.Info("Creating secrets/v2 kv engine")
+	if err := client.Sys().Mount(mountPath2, mountInputV2); err != nil {
+		t.Fatal("error creating secrets/v2 mount")
+	}
+
+	// Setup required secrets, policies, etc.
+	err := seedVaultData(t, client)
+	if err != nil {
+		t.Fatalf("error seeding data: %v", err)
+	}
+
+	return client, cluster
 }
