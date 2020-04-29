@@ -24,9 +24,14 @@ cross:
 	gox -osarch=$(OSARCH) -output "out/secrets-consumer-env-{{.OS}}-{{.Arch}}" -ldflags="$(SECRETS_CONSUMER_ENV_LDFLAGS)"
 
 docker-build:
-	docker build -t doitintl.com/secrets-consumer-env:"$(VERSION)"
+	docker build -t doitintl/secrets-consumer-env:$(VERSION) . --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT)
 
-publish-latest: tag-latest ## Publish the `latest` taged container to ECR
+docker-push:
+	docker push doitintl/secrets-consumer-env:$(VERSION)
+
+up: docker-build docker-push
+
+publish-latest: tag-latest ## Publish the `latest` tagged container
 	@echo 'publish latest to $(DOCKER_REPO)'
 	docker push $(DOCKER_REPO)/$(APP_NAME):latest
 

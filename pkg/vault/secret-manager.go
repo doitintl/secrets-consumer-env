@@ -2,9 +2,11 @@ package vault
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/hashicorp/vault/api"
@@ -33,7 +35,7 @@ type Config struct {
 type SecretConfigJSON struct {
 	Path                 string `json:"path"`
 	Version              string `json:"version"`
-	UseSecretNamesAsKeys bool   `json:"use-secret-names-as-keys"`
+	UseSecretNamesAsKeys string `json:"use-secret-names-as-keys"`
 }
 
 // CastSecretDataToStringMap convert the secret data to map[string]interface{}
@@ -61,14 +63,14 @@ func ConfigureVaultSecrets(client *api.Client, secretConfigs []string, vaultCfg 
 		// --secret-config flags for json config (version, path, use-secret-names-as-keys)
 
 		either via one annotation or env vars VAULT_PATH, SECRET_VERSION, VAULT_USE_SECRET_NAMES_AS_KEYS
-		or via json string '{"path": "/a/b/c", "version": "3", "use-secret-names-as-keys":  true}',
+		or via json string '{"path": "/a/b/c", "version": "3", "use-secret-names-as-keys":  "true"}',
 	*/
-
 	var secretsConfigList []SecretConfig
 
 	for _, secretConfigJSONString := range secretConfigs {
 		secretConfig := SecretConfig{}
 		var secretConfigData SecretConfigJSON
+
 		err := json.Unmarshal([]byte(secretConfigJSONString), &secretConfigData)
 		if err != nil {
 			return nil, fmt.Errorf("unable to decode JSON from string %s - %+v", secretConfigJSONString, err)
@@ -76,12 +78,14 @@ func ConfigureVaultSecrets(client *api.Client, secretConfigs []string, vaultCfg 
 
 		secretConfig.Path = secretConfigData.Path
 		secretConfig.Version = secretConfigData.Version
-		secretConfig.UseSecretNamesAsKeys = secretConfigData.UseSecretNamesAsKeys
+		secretConfig.UseSecretNamesAsKeys, _ = strconv.ParseBool(secretConfigData.UseSecretNamesAsKeys)
 		GetKVConfig(client, &secretConfig)
+
 		secretsConfigList = append(secretsConfigList, secretConfig)
 	}
 
 	vaultCfg.SecretsConfigList = secretsConfigList
+
 	return vaultCfg, nil
 }
 
@@ -214,7 +218,6 @@ func RetrieveSecret(client *api.Client, cfg *SecretConfig) (map[string]interface
 	if strings.HasSuffix(cfg.Path, "/") || strings.Contains(cfg.Path, "*") || cfg.UseSecretNamesAsKeys {
 		if cfg.UseSecretNamesAsKeys {
 			cfg.Path = ensureTrailingSlash(cfg.Path)
-			log.Warnf("cfg: %+v", cfg)
 		}
 
 		var wildcard string
@@ -265,6 +268,7 @@ func RetrieveSecret(client *api.Client, cfg *SecretConfig) (map[string]interface
 			}
 
 			secret, err := readSecret(client, path)
+
 			if err != nil {
 				return nil, err
 			}
@@ -273,6 +277,7 @@ func RetrieveSecret(client *api.Client, cfg *SecretConfig) (map[string]interface
 			// if keys are single value get the value
 			// secret/path/api_key
 			// value: "top-secret"
+
 			if cfg.UseSecretNamesAsKeys {
 				for _, v := range data {
 					value = v
@@ -301,7 +306,10 @@ func RetrieveSecret(client *api.Client, cfg *SecretConfig) (map[string]interface
 		if err != nil {
 			return nil, err
 		}
-		return secret.Data, nil
+		if secret != nil {
+			return secret.Data, nil
+		}
+		return nil, errors.New("could not read secret data")
 	}
 
 	secret, err := readSecret(client, path)
@@ -309,7 +317,6 @@ func RetrieveSecret(client *api.Client, cfg *SecretConfig) (map[string]interface
 	if err != nil {
 		return nil, err
 	}
-
 	return secret.Data, nil
 }
 

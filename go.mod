@@ -5,6 +5,7 @@ go 1.14
 require (
 	cloud.google.com/go v0.49.1-0.20191211233137-1d9fae4b756d
 	github.com/aws/aws-sdk-go v1.28.7
+	github.com/go-delve/delve v1.4.0 // indirect
 	github.com/golang/groupcache v0.0.0-20191027212112-611e8accdfc9 // indirect
 	github.com/google/go-cmp v0.4.0
 	github.com/googleapis/gax-go/v2 v2.0.5
@@ -20,7 +21,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2
 	github.com/spf13/cast v1.3.1
 	github.com/spf13/cobra v0.0.7
-	github.com/spf13/pflag v1.0.3
+	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.6.2
 	go.opencensus.io v0.22.2 // indirect
 	golang.org/x/oauth2 v0.0.0-20191202225959-858c2ad4c8b6
@@ -28,4 +29,5 @@ require (
 	google.golang.org/appengine v1.6.5 // indirect
 	google.golang.org/genproto v0.0.0-20200117163144-32f20d992d24
 	google.golang.org/grpc v1.25.1
+	istio.io/pkg v0.0.0-20200428153258-3cf56f10b505
 )

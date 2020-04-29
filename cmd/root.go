@@ -24,6 +24,7 @@ import (
 	"syscall"
 
 	"github.com/doitintl/secrets-consumer-env/pkg/injector"
+	"github.com/doitintl/secrets-consumer-env/pkg/version"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -90,6 +91,7 @@ func Execute() {
 func init() {
 	cobra.OnInitialize(initConfig)
 
+	fmt.Printf("Secrets Consumer Env Version: %s Commit: %s\n\n", version.GetVersion(), version.GetGitCommitID())
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.

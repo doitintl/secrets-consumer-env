@@ -24,6 +24,7 @@ type Config struct {
 	SecretVersion                string
 	GoogleApplicationCredentials string
 	ServiceAccount               string
+	UseInTests                   bool
 }
 
 // SecretManagerAccessRequestParams is used as input to access a secret from Secret Manager.
@@ -94,11 +95,14 @@ func RetrieveSecret(client SecretManagerClient, cfg *Config) (map[string]interfa
 		err    error
 	)
 
-	sa, err := vault.GetServiceAccountCreds(&vault.GCPBackendConfig{Project: cfg.ProjectID, CredsPath: cfg.GoogleApplicationCredentials})
-	if err != nil {
-		return nil, err
+	if !cfg.UseInTests {
+		sa, err := vault.GetServiceAccountCreds(&vault.GCPBackendConfig{Project: cfg.ProjectID, CredsPath: cfg.GoogleApplicationCredentials})
+		if err != nil {
+			return nil, err
+		}
+		cfg.ServiceAccount = sa.Email
 	}
-	cfg.ServiceAccount = sa.Email
+
 	logger = log.WithFields(logrus.Fields{
 		"project":         cfg.ProjectID,
 		"secret_name":     cfg.SecretName,

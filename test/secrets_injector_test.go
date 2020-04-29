@@ -61,8 +61,8 @@ func TestSecretInjector(t *testing.T) {
 				"VAULT_ROLE=milton",
 			},
 			secretData: map[string]interface{}{
-				"API_KEY":     "qwe1234",
-				"DB_PASSWORD": "s3cr3t",
+				"api_key":     "qwe1234",
+				"db_password": "s3cr3t",
 			},
 			sanitized: make(injector.SanitizedEnviron, 0, 8),
 			function:  injectSecrets,

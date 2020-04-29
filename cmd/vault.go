@@ -18,6 +18,7 @@ package cmd
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	vault "github.com/doitintl/secrets-consumer-env/pkg/vault"
 	vaultapi "github.com/hashicorp/vault/api"
@@ -51,42 +52,45 @@ secret path based on the secret backend version (v1 or v2)
 
 secrets-consumer-env can login to kubernetes backend (default) or GCP backend.
 
-Ways to use Vault secrets:
---------------------------
+#### Ways to use Vault secrets:
 
 1. You can use Vault with a secret path that contains a JSON
 
 2. You can use Vault paths as if they were a file system, one use case would be to have a path with secrets as sub-paths, each secret name would be used as the key name and will contain a single value.
+, for example:
 
-For example:
-------------
-A list of secrets names (keys) secrets/kvV2/service/:
+A list of secrets names (keys) secrets/kvV2/service/:` + "\n" +
 
-secrets/kvV2/service/API
-|- value: qwerty1234
+		"\n```\n" +
+		`secrets/kvV2/service/API` +
+		"\n|- value: qwerty1234`" +
+		"\n```\n" +
+		"\n```\n" +
+		`secrets/kvV2/service/DATABASE_URL` +
+		"\n|- value: http://127.0.0.1:3306" +
+		"\n```\n" +
+		"\n```\n" +
+		"secrets/kvV2/service/SOME_PASSWORD" +
+		"\n|- value: s3cr3t123\n```" + `
 
-secrets/kvV2/service/DATABASE_URL
-|- value: http://127.0.0.1:3306
+    In this case we need the secret name to be the key, and the value to be the actual value for that key
 
-secrets/kvV2/service/SOME_PASSWORD
-|- value: s3cr3t123
+    Or it can be a list of secrets with multiple key values secrets/kvV2/service:
 
-In this case we need the secret name to be the key, and the value to be the actual value for that key
+    ` +
+		"\n```\n" +
+		`secrets/kvV2/service/app` +
+		"\n|- API_KEY: qwerty1234" +
+		"\n|- DATABASE_URL: http://127.0.0.1:3306\n```" +
 
-Or it can be a list of secrets with multiple key values secrets/kvV2/service:
+		"\n\n```secrets/kvV2/service/database" +
+		"\n|- USER_NAME: admin" +
+		"\n|- PASSWORD: s3cr3t\n```\n\n" +
 
-secrets/kvV2/service/app
-|- API_KEY: qwerty1234
-|- DATABASE_URL http://127.0.0.1:3306
-
-secrets/kvV2/service/database
-|- USER_NAME: admin
-|- PASSWORD: s3cr3t
-
-The advantage of this approach is that you don't have to read, and append a value when you want to add or edit a value in it
+		`The advantage of this approach is that you don't have to read, and append a value when you want to add or edit a value in it
 
 3. You can also use multiple secrets if you pass the flag --secret-config with following convention:
-   {"path": "some/secrets/path/", "use-secret-names-as-keys":  true, version: "5"} multiple times
+   {"path": "some/secrets/path/", "use-secret-names-as-keys": "true", version: "5"} multiple times
 
 4. you can use explicit secrets by using the following convention: ENV_NAME_TO_BE_EXPORTED="secret:<SECRET_KEY>",
    only these variables will be available to your given command/process.
@@ -108,10 +112,10 @@ The advantage of this approach is that you don't have to read, and append a valu
 		}
 
 		if vaultPath != "" {
-			var secretConfig vault.SecretConfig
-			secretConfig.Version = secretVersion
-			secretConfig.UseSecretNamesAsKeys = vaultUseSecretNamesAsKeys
+			var secretConfig vault.SecretConfigJSON
 			secretConfig.Path = vaultPath
+			secretConfig.Version = secretVersion
+			secretConfig.UseSecretNamesAsKeys = strconv.FormatBool(vaultUseSecretNamesAsKeys)
 			secretJSON, _ := json.Marshal(secretConfig)
 			secretConfigs = append(secretConfigs, string(secretJSON))
 		}
@@ -161,8 +165,8 @@ func init() {
 	viper.SetDefault("vault_role", "")
 	viper.SetDefault("token_path", "/var/run/secrets/kubernetes.io/serviceaccount/token")
 	viper.SetDefault("vault_path", "")
-	viper.SetDefault("secret_version", "")
-	viper.SetDefault("names_as_keys", false)
+	viper.SetDefault("vault_secret_version", "")
+	viper.SetDefault("vault_use_secret_names_as_keys", false)
 
 	//GCP Backend login
 	viper.SetDefault("project_id", "")
@@ -181,8 +185,8 @@ func init() {
 
 	// Single secret
 	vaultCmd.Flags().StringVar(&vaultPath, "path", viper.GetString("vault_path"), "Vault secrets path, can be a secret path ending with a \"/\" to get all secrets below that path")
-	vaultCmd.Flags().StringVar(&secretVersion, "version", viper.GetString("secret_version"), "Secret version if using a KVv2 (default \"latest\")")
-	vaultCmd.Flags().BoolVar(&vaultUseSecretNamesAsKeys, "names-as-keys", viper.GetBool("names_as_keys"), "Use secret names as keys (default false)")
+	vaultCmd.Flags().StringVar(&secretVersion, "version", viper.GetString("vault_secret_version"), "Secret version if using a KVv2 (default \"latest\")")
+	vaultCmd.Flags().BoolVar(&vaultUseSecretNamesAsKeys, "names-as-keys", viper.GetBool("vault_use_secret_names_as_keys"), "Use secret names as keys (default false)")
 
 	// Multiple secrets via JSON string
 	vaultCmd.Flags().StringArrayVarP(

@@ -22,10 +22,13 @@ func (m *mockGCPSecretManagerClient) AccessSecretVersion(ctx context.Context, re
 
 func TestGCPGetSecretData(t *testing.T) {
 	client := &mockGCPSecretManagerClient{}
+
 	cfg := &gcpSecretsManager.Config{
 		ProjectID:  "fake-project",
 		SecretName: "top-secret",
+		UseInTests: true,
 	}
+
 	secretData, err := gcpSecretsManager.RetrieveSecret(client, cfg)
 	if err != nil {
 		t.Fatalf("error retrieving secret data %v", err)

@@ -5,9 +5,10 @@ import (
 
 	vaultSecretsManager "github.com/doitintl/secrets-consumer-env/pkg/vault"
 	"github.com/google/go-cmp/cmp"
+	"github.com/spf13/viper"
 
 	kv "github.com/hashicorp/vault-plugin-secrets-kv"
-	"github.com/hashicorp/vault/api"
+	vaultapi "github.com/hashicorp/vault/api"
 	vaulthttp "github.com/hashicorp/vault/http"
 	"github.com/hashicorp/vault/sdk/logical"
 	hashivault "github.com/hashicorp/vault/vault"
@@ -20,8 +21,9 @@ type vaultConfigSecret struct {
 	data map[string]interface{}
 }
 
-func retrieveSecrets(t *testing.T, client *api.Client, secretsConfigList []string) (map[string]interface{}, error) {
+func retrieveSecrets(t *testing.T, client *vaultapi.Client, secretsConfigList []string) (map[string]interface{}, error) {
 	vaultCfg, err := vaultSecretsManager.ConfigureVaultSecrets(client, secretsConfigList, &vaultSecretsManager.Config{})
+
 	if err != nil {
 		t.Fatalf("error configuring vault secrets %v", err)
 	}
@@ -34,12 +36,30 @@ func retrieveSecrets(t *testing.T, client *api.Client, secretsConfigList []strin
 }
 
 func TestVaultSecrets(t *testing.T) {
-	client, cluster := createVaultTestCluster(t)
-	defer cluster.Cleanup()
+	viper.AutomaticEnv()
+	realCluster := viper.GetBool("real_cluster")
+	var (
+		err     error
+		client  *vaultapi.Client
+		cluster *hashivault.TestCluster
+	)
+
+	if realCluster {
+		client, err = vaultapi.NewClient(vaultapi.DefaultConfig())
+		rootToken := viper.GetString("root_token")
+		client.SetToken(rootToken)
+		if err != nil {
+			t.Fatalf("Error creating Vault client: %v", err)
+		}
+	} else {
+		client, cluster = createVaultTestCluster(t)
+		defer cluster.Cleanup()
+	}
+
 	testCases := []struct {
 		name              string
 		secretsConfigList []string
-		function          func(*testing.T, *api.Client, []string) (map[string]interface{}, error)
+		function          func(*testing.T, *vaultapi.Client, []string) (map[string]interface{}, error)
 		wants             map[string]interface{}
 	}{
 		{
@@ -57,7 +77,7 @@ func TestVaultSecrets(t *testing.T) {
 		{
 			name: "secret names as keys v1",
 			secretsConfigList: []string{
-				`{"path": "secrets/v1/multi/secrets/path/", "use-secret-names-as-keys":  true}`,
+				`{"path": "secrets/v1/multi/secrets/path/", "use-secret-names-as-keys": "true"}`,
 			},
 			function: retrieveSecrets,
 			wants: map[string]interface{}{
@@ -80,9 +100,21 @@ func TestVaultSecrets(t *testing.T) {
 			},
 		},
 		{
+			name: "Plain V2 Secret Access Secret Version 2",
+			secretsConfigList: []string{
+				`{"path": "secrets/v2/plain/secrets/path/app", "version": "2"}`,
+			},
+			function: retrieveSecrets,
+			wants: map[string]interface{}{
+				"api_key":      "version-2",
+				"database_url": "version-2-host:3306",
+				"password":     "version-2-password",
+			},
+		},
+		{
 			name: "secret names as keys v2",
 			secretsConfigList: []string{
-				`{"path": "secrets/v2/multi/secrets/path/", "use-secret-names-as-keys":  true}`,
+				`{"path": "secrets/v2/multi/secrets/path/", "use-secret-names-as-keys": "true"}`,
 			},
 			function: retrieveSecrets,
 			wants: map[string]interface{}{
@@ -94,8 +126,8 @@ func TestVaultSecrets(t *testing.T) {
 		{
 			name: "multiple secrets",
 			secretsConfigList: []string{
-				`{"path": "secrets/v2/multi/secrets/path/", "use-secret-names-as-keys":  true}`,
-				`{"path": "secrets/v1/multi2/secrets/path/", "use-secret-names-as-keys":  true}`,
+				`{"path": "secrets/v2/multi/secrets/path/", "use-secret-names-as-keys": "true"}`,
+				`{"path": "secrets/v1/multi2/secrets/path/", "use-secret-names-as-keys": "true"}`,
 			},
 			function: retrieveSecrets,
 			wants: map[string]interface{}{
@@ -108,7 +140,7 @@ func TestVaultSecrets(t *testing.T) {
 		}, {
 			name: "multiple secrets v2",
 			secretsConfigList: []string{
-				`{"path": "secrets/v2/multi2/secrets/path/", "use-secret-names-as-keys":  true}`,
+				`{"path": "secrets/v2/multi2/secrets/path/", "use-secret-names-as-keys": "true"}`,
 				`{"path": "secrets/v2/plain/secrets/path/app"}`,
 			},
 			function: retrieveSecrets,
@@ -117,6 +149,19 @@ func TestVaultSecrets(t *testing.T) {
 				"api_key":      "app_key_v2",
 				"database_url": "v2-host:3306",
 				"password":     "secrets-v2",
+			},
+		}, {
+			name: "wildcard secrets v2",
+			secretsConfigList: []string{
+				`{"path": "secrets/v2/plain/secrets/db*"}`,
+			},
+			function: retrieveSecrets,
+			wants: map[string]interface{}{
+				"user":     "root",
+				"password": "secret-sauce",
+				"param1":   "param1-value",
+				"param2":   "param2-value",
+				"param3":   "param3-value",
 			},
 		},
 	}
@@ -137,7 +182,7 @@ func TestVaultSecrets(t *testing.T) {
 }
 
 // Setup required secrets, policies, etc.
-func seedVaultData(t *testing.T, client *api.Client) error {
+func seedVaultData(t *testing.T, client *vaultapi.Client) error {
 	var err error
 	secretsV1 := []vaultConfigSecret{
 		{
@@ -173,6 +218,41 @@ func seedVaultData(t *testing.T, client *api.Client) error {
 
 	secretsV2 := []vaultConfigSecret{
 		{
+			path: "secrets/v2/data/plain/secrets/path/app",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"api_key":      "next",
+					"database_url": "next",
+					"password":     "next",
+				},
+			},
+		}, {
+			path: "secrets/v2/data/plain/secrets/db_credentials",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"user":     "root",
+					"password": "secret-sauce",
+				},
+			},
+		}, {
+			path: "secrets/v2/data/plain/secrets/db_params",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"param1": "param1-value",
+					"param2": "param2-value",
+					"param3": "param3-value",
+				},
+			},
+		}, {
+			path: "secrets/v2/data/plain/secrets/path/app",
+			data: map[string]interface{}{
+				"data": map[string]interface{}{
+					"api_key":      "version-2",
+					"database_url": "version-2-host:3306",
+					"password":     "version-2-password",
+				},
+			},
+		}, {
 			path: "secrets/v2/data/plain/secrets/path/app",
 			data: map[string]interface{}{
 				"data": map[string]interface{}{
@@ -241,7 +321,7 @@ func seedVaultData(t *testing.T, client *api.Client) error {
 	return nil
 }
 
-func createVaultTestCluster(t *testing.T) (*api.Client, *hashivault.TestCluster) {
+func createVaultTestCluster(t *testing.T) (*vaultapi.Client, *hashivault.TestCluster) {
 	t.Helper()
 	t.Log("Creating Vault Test Cluster in-memory backend")
 
@@ -260,14 +340,14 @@ func createVaultTestCluster(t *testing.T) (*api.Client, *hashivault.TestCluster)
 	client := core.Client
 
 	// Create KV v1 and v2
-	mountInputV1 := &api.MountInput{
+	mountInputV1 := &vaultapi.MountInput{
 		Type: "kv",
 		Options: map[string]string{
 			"path": "/secrets/v1",
 		},
 	}
 
-	mountInputV2 := &api.MountInput{
+	mountInputV2 := &vaultapi.MountInput{
 		Type: "kv",
 		Options: map[string]string{
 			"path":    "/secrets/v2",
