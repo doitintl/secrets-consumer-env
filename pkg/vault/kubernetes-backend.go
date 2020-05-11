@@ -23,10 +23,10 @@ func GetServiceAccountToken(tokenPath string) ([]byte, error) {
 }
 
 // KubernetesBackendLogin Authenticate to Vault via Kubernetes Backend
-func KubernetesBackendLogin(client *Client, role string, jwt []byte) (string, error) {
-	params := map[string]interface{}{"jwt": string(jwt), "role": role}
-	log.Infof("Logging into Vault Kubernetes backend using the role %s", role)
-	secretData, err := client.Logical.Write("auth/kubernetes/login", params)
+func KubernetesBackendLogin(client *Client, vaultCfg *Config, jwt []byte) (string, error) {
+	params := map[string]interface{}{"jwt": string(jwt), "role": vaultCfg.Role}
+	log.Infof("Logging into Vault Kubernetes backend %s using the role %s", vaultCfg.KubernetesBackend, vaultCfg.Role)
+	secretData, err := client.Logical.Write(vaultCfg.KubernetesBackend, params)
 	if err != nil {
 		return "", fmt.Errorf("failed login to Vault using Kubernetes backend %v", err)
 	}

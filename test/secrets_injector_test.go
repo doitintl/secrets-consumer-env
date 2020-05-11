@@ -25,7 +25,7 @@ func TestSecretInjector(t *testing.T) {
 		wants      []string
 	}{
 		{
-			name: "Inject env vars with prefix only",
+			name: "Inject env vars explicit",
 			environ: []string{
 				"PATH=/usr/bin/some-path",
 				"SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.jNPniXcXag/Listeners",
@@ -33,32 +33,8 @@ func TestSecretInjector(t *testing.T) {
 				"XPC_FLAGS=0x0",
 				"VAULT_PATH=/secret/path",
 				"VAULT_ROLE=milton",
-				"API_KEY=secret:API_KEY",
-				"DB_PASSWORD=vault:DB_PASSWORD",
-			},
-			secretData: map[string]interface{}{
-				"API_KEY":     "qwe1234",
-				"DB_PASSWORD": "s3cr3t",
-			},
-			sanitized: make(injector.SanitizedEnviron, 0, 8),
-			function:  injectSecrets,
-			wants: []string{
-				"PATH=/usr/bin/some-path",
-				"SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.jNPniXcXag/Listeners",
-				"COLORFGBG=15;0",
-				"XPC_FLAGS=0x0",
-				"API_KEY=qwe1234",
-				"DB_PASSWORD=s3cr3t",
-			},
-		}, {
-			name: "Inject env vars without prefix - get all secrets",
-			environ: []string{
-				"PATH=/usr/bin/some-path",
-				"SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.jNPniXcXag/Listeners",
-				"COLORFGBG=15;0",
-				"XPC_FLAGS=0x0",
-				"VAULT_PATH=/secret/path",
-				"VAULT_ROLE=milton",
+				"API_KEY=secret:api_key",
+				"DB_PASSWORD=vault:db_password",
 			},
 			secretData: map[string]interface{}{
 				"api_key":     "qwe1234",
@@ -73,6 +49,34 @@ func TestSecretInjector(t *testing.T) {
 				"XPC_FLAGS=0x0",
 				"API_KEY=qwe1234",
 				"DB_PASSWORD=s3cr3t",
+			},
+		}, {
+			name: "Inject env vars - get all secrets",
+			environ: []string{
+				"PATH=/usr/bin/some-path",
+				"SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.jNPniXcXag/Listeners",
+				"COLORFGBG=15;0",
+				"XPC_FLAGS=0x0",
+				"VAULT_PATH=/secret/path",
+				"VAULT_ROLE=milton",
+			},
+			secretData: map[string]interface{}{
+				"api_key":     "qwe1234",
+				"db_password": "s3cr3t",
+				"int":         8200,
+				"bool":        true,
+			},
+			sanitized: make(injector.SanitizedEnviron, 0, 8),
+			function:  injectSecrets,
+			wants: []string{
+				"PATH=/usr/bin/some-path",
+				"SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.jNPniXcXag/Listeners",
+				"COLORFGBG=15;0",
+				"XPC_FLAGS=0x0",
+				"api_key=qwe1234",
+				"db_password=s3cr3t",
+				"int=8200",
+				"bool=true",
 			},
 		},
 	}

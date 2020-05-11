@@ -69,6 +69,7 @@ func TestVaultSecrets(t *testing.T) {
 			},
 			function: retrieveSecrets,
 			wants: map[string]interface{}{
+				"API_V2":       "extra-v2",
 				"api_key":      "app_key",
 				"database_url": "127.0.0.1:3306",
 				"password":     "secret",
@@ -81,6 +82,7 @@ func TestVaultSecrets(t *testing.T) {
 			},
 			function: retrieveSecrets,
 			wants: map[string]interface{}{
+				"APP_NAME":     "TestApp",
 				"api_key":      "top-secret",
 				"database_url": "some.mysql.host:3306",
 				"password":     "pa33w0rd123",
@@ -213,6 +215,12 @@ func seedVaultData(t *testing.T, client *vaultapi.Client) error {
 		}, {
 			path: "secrets/v1/multi2/secrets/path/vault-pass",
 			data: map[string]interface{}{"value": "multi2-pa33w0rd123"},
+		}, {
+			path: "secrets/v1/multi2/secrets/path/bool-type",
+			data: map[string]interface{}{"value": true},
+		}, {
+			path: "secrets/v1/multi2/secrets/path/int-type",
+			data: map[string]interface{}{"value": 8200},
 		},
 	}
 

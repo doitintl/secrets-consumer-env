@@ -28,6 +28,7 @@ type Config struct {
 	Role              string
 	TokenPath         string
 	Backend           string
+	KubernetesBackend string
 	SecretsConfigList []SecretConfig
 }
 
@@ -90,7 +91,7 @@ func ConfigureVaultSecrets(client *api.Client, secretConfigs []string, vaultCfg 
 }
 
 func readSecret(client *api.Client, secretPath string) (*api.Secret, error) {
-	log.Infof("Getting Vault secrets from path: %s", secretPath)
+	log.Debugf("Getting Vault secrets from path: %s", secretPath)
 	secret, secretError := client.Logical().Read(secretPath)
 	if secretError != nil {
 		return nil, fmt.Errorf("failed to read secret '%s' %v", secretPath, secretError)
@@ -108,7 +109,7 @@ func readSecret(client *api.Client, secretPath string) (*api.Secret, error) {
 func listKeys(client *api.Client, cfg SecretConfig) ([]string, error) {
 	path := cfg.Path
 	var err error
-	log.Infof("secret path ends with a \"/\" or has \"*\", listing keys from path: %s", path)
+	log.Debugf("secret path ends with a \"/\" or has \"*\", listing keys from path: %s", path)
 
 	if cfg.IsKVv2 {
 		path = sanitizePath(path)
@@ -163,7 +164,7 @@ func filterByWildcard(keys []string, wildcard string) []string {
 		wildcardRegexp = fmt.Sprintf(".+%s(.+)?", wildcard)
 	}
 
-	log.Infof("Using the wildcard pattern: %s", wildcardRegexp)
+	log.Debugf("Using the wildcard pattern: %s", wildcardRegexp)
 	pattern := regexp.MustCompile(wildcardRegexp)
 
 	var filteredKeys []string
@@ -177,7 +178,7 @@ func filterByWildcard(keys []string, wildcard string) []string {
 	if len(filteredKeys) == 0 {
 		log.Warnf("keys did not match the path pattern %s, check your keys and path", wildcard)
 	} else {
-		log.Infof("Filtered keys: %v", filteredKeys)
+		log.Debugf("Filtered keys: %v", filteredKeys)
 	}
 	return filteredKeys
 }
@@ -235,14 +236,14 @@ func RetrieveSecret(client *api.Client, cfg *SecretConfig) (map[string]interface
 			keys = filterByWildcard(keys, wildcard)
 		}
 
-		log.Infof("keys: %+v\n", keys)
+		log.Debugf("keys: %+v\n", keys)
 		if len(keys) == 0 {
 			return nil, fmt.Errorf("could not list keys under path: %s", cfg.Path)
 		}
 		if cfg.UseSecretNamesAsKeys {
-			log.Info("Using secret names as keys")
+			log.Debugf("Using secret names as keys")
 		} else {
-			log.Info("Using secret keys and values")
+			log.Debugf("Using secret keys and values")
 		}
 		// get the secrets data from the keys
 		for _, key := range keys {
@@ -334,7 +335,7 @@ func RetrieveSecrets(client *api.Client, vaultCfg *Config) (map[string]interface
 
 		data := CastSecretDataToStringMap(secretConfigData)
 		for k, v := range data {
-			secretData[strings.ToLower(k)] = v
+			secretData[k] = v
 		}
 	}
 

@@ -155,7 +155,7 @@ func setUpLogs(out io.Writer, level string) error {
 func processSecrets(secretData map[string]interface{}, args []string) {
 	log.Info("Processing secrets from Secret Manager as environment variables")
 	var err error
-	environ := syscall.Environ()
+	environ := os.Environ()
 	sanitized := make(injector.SanitizedEnviron, 0, len(environ))
 	sanitized, err = injector.InjectSecrets(secretData, environ, sanitized)
 	if err != nil {

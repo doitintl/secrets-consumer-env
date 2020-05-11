@@ -32,7 +32,7 @@ func NewClientWithConfig(config *vaultapi.Config, vaultCfg *Config, gcpCfg *GCPB
 		if err != nil {
 			return nil, err
 		}
-		clientToken, err = KubernetesBackendLogin(client, vaultCfg.Role, jwt)
+		clientToken, err = KubernetesBackendLogin(client, vaultCfg, jwt)
 		if err != nil {
 			return nil, err
 		}

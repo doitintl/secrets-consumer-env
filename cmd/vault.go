@@ -29,6 +29,7 @@ import (
 // secretConfigs in JSON strings format
 var (
 	secretConfigs             []string
+	kubernetesBackend         string
 	vaultBackend              string
 	tokenPath                 string
 	vaultRole                 string
@@ -101,9 +102,10 @@ A list of secrets names (keys) secrets/kvV2/service/:` + "\n" +
 		var err error
 		secretData := make(map[string]interface{})
 		vaultCfg := &vault.Config{
-			Role:      vaultRole,
-			TokenPath: tokenPath,
-			Backend:   vaultBackend,
+			Role:              vaultRole,
+			TokenPath:         tokenPath,
+			Backend:           vaultBackend,
+			KubernetesBackend: kubernetesBackend,
 		}
 		gcpCfg := &vault.GCPBackendConfig{
 			Project:        GCPBackendProjectID,
@@ -162,6 +164,7 @@ func init() {
 	RootCmd.AddCommand(vaultCmd)
 
 	viper.SetDefault("vault_backend", "kubernetes")
+	viper.SetDefault("kubernetes_backend", "auth/kubernetes/login")
 	viper.SetDefault("vault_role", "")
 	viper.SetDefault("token_path", "/var/run/secrets/kubernetes.io/serviceaccount/token")
 	viper.SetDefault("vault_path", "")
@@ -176,6 +179,7 @@ func init() {
 
 	// Create flags to variables
 	vaultCmd.Flags().StringVarP(&vaultBackend, "backend", "b", viper.GetString("vault_backend"), "Vault authentication backend [kubernetes, gcp]")
+	vaultCmd.Flags().StringVarP(&kubernetesBackend, "kubernetes-backend", "k", viper.GetString("kubernetes_backend"), "Kubernetes backend authentication path")
 	vaultCmd.Flags().StringVar(&GCPBackendProjectID, "project-id", viper.GetString("project_id"), "GCP Project ID for GCP backend login")
 	vaultCmd.Flags().StringVarP(&credsPath, "google-application-credentials", "a", viper.GetString("google_application_credentials"), "The file path to the GCP service account json file with permission to the secret")
 

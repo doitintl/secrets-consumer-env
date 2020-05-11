@@ -35,8 +35,7 @@ var sanitizeEnvmap = map[string]bool{
 
 // Appends variable an entry (name=value) into the environ list.
 // VAULT_* variables are not populated into this list.
-func (environ *SanitizedEnviron) append(iname interface{}, ivalue interface{}) {
-	name, value := iname.(string), ivalue.(string)
+func (environ *SanitizedEnviron) append(name, value string) {
 	if _, ok := sanitizeEnvmap[name]; !ok {
 		*environ = append(*environ, fmt.Sprintf("%s=%s", name, value))
 	}
@@ -82,12 +81,13 @@ func InjectSecrets(secretData map[string]interface{}, environ []string, sanitize
 
 		if prefixedEnv == true {
 			// if the secret data contains an explicit key from env add it to the sanitized env
+			log.Debugf("Explicit key: %s found in env vars, checking if its in vault secrets...", vaultSecretKey)
 			explicitKey = true
 			if value, ok := data[vaultSecretKey]; ok {
-				log.Infof("explicit key: %s will be added to the environment", name)
-				sanitized.append(name, value)
+				log.Debugf("Explicit key: %s found, will be added to the process environment", vaultSecretKey)
+				sanitized.append(name, fmt.Sprintf("%v", value))
 			} else {
-				return nil, fmt.Errorf("Env var key: %s not found in secrets keys", vaultSecretKey)
+				return nil, fmt.Errorf("Explicit key: %s not found in secrets keys", vaultSecretKey)
 			}
 		} else {
 			// add the env var to the sanitized env
@@ -97,7 +97,8 @@ func InjectSecrets(secretData map[string]interface{}, environ []string, sanitize
 
 	if !explicitKey {
 		for secretName, secretValue := range data {
-			sanitized.append(strings.ToUpper(secretName), secretValue)
+			value := fmt.Sprintf("%v", secretValue)
+			sanitized.append(secretName, value)
 		}
 	}
 	return sanitized, nil
