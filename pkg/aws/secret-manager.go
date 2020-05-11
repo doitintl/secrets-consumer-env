@@ -28,7 +28,7 @@ func newSecretManagerClient(region, roleArn string) *secretsmanager.SecretsManag
 	}))
 
 	if roleArn != "" {
-		log.Infof("Using Role Arn: %s", roleArn)
+		log.Debugf("Using Role Arn: %s", roleArn)
 		// the new Credentials object wraps the AssumeRoleProvider
 		sess.Config.Credentials = stscreds.NewCredentials(sess, roleArn)
 	}

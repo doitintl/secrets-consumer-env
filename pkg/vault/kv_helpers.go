@@ -89,7 +89,7 @@ func AddPrefixToVKVPath(p, mountPath, apiPrefix string) string {
 func GetKVConfig(client *api.Client, cfg *SecretConfig) error {
 	mountPath, v2, err := isKVv2(cfg.Path, client)
 
-	log.Infof("Secret path %s is a KVv2: %v", cfg.Path, v2)
+	log.Debugf("Secret path %s is a KVv2: %v", cfg.Path, v2)
 
 	if err != nil {
 		return fmt.Errorf("could not check if secret KV version is 2: %v", err)

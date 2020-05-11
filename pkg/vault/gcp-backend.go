@@ -36,7 +36,7 @@ func GetServiceAccountCreds(cfg *GCPBackendConfig) (*jwt.Config, error) {
 
 func generateSignedJWTWithIAM(iamClient *iam.Service, cfg *GCPBackendConfig, role string) (*iam.SignJwtResponse, error) {
 	resourceName := fmt.Sprintf("projects/%s/serviceAccounts/%s", cfg.Project, cfg.ServiceAccount)
-	log.Infof("Generating signed JWT with IAM for resource %s", resourceName)
+	log.Debugf("Generating signed JWT with IAM for resource %s", resourceName)
 	jwtPayload := map[string]interface{}{
 		"sub": cfg.ServiceAccount,
 		"aud": fmt.Sprintf("vault/%s", role),
